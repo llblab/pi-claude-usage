@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1: Trusted CI Publication
+
+- Releases use the configured npm Trusted Publisher for GitHub Actions, with provenance and workflow-owned GitHub Release creation. Public-package verification now allows approximately 30 minutes for npm processing, with a 35-minute step limit, while retaining exact commit and package-inventory checks.
+- Quota polling, OAuth authentication, shared-state coordination, and statusline behavior are unchanged from 0.1.0.
+
 ## 0.1.0: Claude Subscription Usage
 
 - Initial standalone release, adapted from [pi-codex-usage](https://github.com/llblab/pi-codex-usage), for Claude Pro/Max subscriptions. Reads the 5-hour and 7-day quota windows using Pi's Anthropic OAuth login; API-key-only auth reports `n/a`.

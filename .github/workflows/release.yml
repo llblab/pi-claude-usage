@@ -149,13 +149,14 @@ jobs:
         if: steps.npm-state.outputs.publish == 'true'
         run: npm publish --access public --provenance
       - name: Verify public npm package and packed manifest
+        timeout-minutes: 35
         env:
           PACKAGE_NAME: ${{ steps.preflight.outputs.package_name }}
           TAG_COMMIT: ${{ steps.preflight.outputs.tag_commit }}
           VERSION: ${{ steps.preflight.outputs.version }}
         run: |
           verified=false
-          for attempt in $(seq 1 20); do
+          for attempt in $(seq 1 60); do
             if npm view "$PACKAGE_NAME@$VERSION" --json version gitHead > npm-published.json 2> npm-published.err &&
                npm pack "$PACKAGE_NAME@$VERSION" --dry-run --json > npm-pack.json 2> npm-pack.err &&
                node --input-type=module <<'NODE'
@@ -178,7 +179,7 @@ jobs:
               verified=true
               break
             fi
-            sleep 3
+            sleep 30
           done
           if [ "$verified" != "true" ]; then
             cat npm-published.err npm-pack.err >&2 2>/dev/null || true
