@@ -1,6 +1,6 @@
 {
   "name": "@llblab/pi-claude-usage",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": false,
   "description": "Minimal Pi extension that shows Anthropic Claude subscription usage limits using Pi OAuth auth",
   "keywords": [
@@ -26,7 +26,7 @@
   },
   "scripts": {
     "check": "node --experimental-strip-types -e \"await import('./index.ts'); console.log('pi-claude-usage: extension import ok')\"",
-    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "audit": "npm audit --omit=peer",
     "pack:dry": "npm pack --dry-run",
@@ -34,6 +34,7 @@
   },
   "files": [
     "index.ts",
+    "lib/",
     "README.md",
     "AGENTS.md",
     "BACKLOG.md",
@@ -48,13 +49,16 @@
     "image": "https://github.com/llblab/pi-claude-usage/raw/main/banner.jpg"
   },
   "peerDependencies": {
-    "@earendil-works/pi-agent-core": "*",
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-agent-core": ">=1.0.0",
+    "@earendil-works/pi-ai": ">=1.0.0",
+    "@earendil-works/pi-coding-agent": ">=1.0.0",
     "@sinclair/typebox": "*"
   },
   "devDependencies": {
     "@types/node": "latest",
     "typescript": "latest"
+  },
+  "dependencies": {
+    "@llblab/pi-command-fast": "^0.1.0"
   }
 }

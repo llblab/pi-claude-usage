@@ -66,6 +66,7 @@ for (const scenario of scenarios) {
       let status;
       const model = { provider: claude ? "anthropic" : "openai-codex", id: "test", name: "Test" };
       const ctx = {
+        sessionManager: {},
         model,
         ui: {
           theme: { fg: (_, value) => value, bg: (_, value) => value },
@@ -80,7 +81,7 @@ for (const scenario of scenarios) {
           },
         },
       };
-      module.default({ on: (name, handler) => handlers.set(name, handler) });
+      module.default({ on: (name, handler) => handlers.set(name, handler), registerCommand: () => {} });
       try {
         handlers.get("session_start")({}, ctx);
         if (scenario === "display") {

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0: Shared Fast Mode and Pi 1.0 Baseline
+
+- Split the monolithic extension into cohesive `lib/` domains matching Codex Usage: composition, status lifecycle, shared state, OAuth query, quota normalization, formatting, Telegram and Fast. `index.ts` now only re-exports the unchanged public API; tests follow domain owners. Quota/auth/leadership, mutex/fencing/backoff, status redraw and Fast behavior are preserved.
+- Added an argument-free `/fast` provider handler through `@llblab/pi-command-fast@^0.1.0`, sharing exactly one command with Codex Usage across load orders, duplicate dependency copies, independent sessions and reloads. Claude eligibility is restricted to the Opus family without a version allowlist; other families receive `Fast mode is supported only for Opus` without writes or quota requests, and stale unsupported overrides do not decorate status or activate the request bridge. Generic command dispatch and Codex eligibility are unchanged.
+- Persisted `speed: "fast"` solely in the current Anthropic model override; OFF deletes it. The shared JSONC helper preserves comments and unrelated configuration with atomic replacement.
+- Requires Pi ≥1.0.0 across coding-agent, AI and agent-core peers: older Anthropic transports do not expose the same assembled beta payload contract. Adapted native payloads with Fast speed and additive `fast-mode-2026-02-01` beta, preserving explicit speed and Pi-generated/configured betas through actual HTTP assembly. No provider replacement or header-default suppression.
+- Appended dim lowercase ` fast` at the final terminal status boundary, including loading/error/n/a paths, with immediate silent redraw and no quota request. OAuth quota polling, SQLite mutex, claim fencing, stale display, retry/backoff, and Telegram remain unchanged. Tests now live in `tests/`.
+
 ## 0.1.1: Trusted CI Publication
 
 - Releases use the configured npm Trusted Publisher for GitHub Actions, with provenance and workflow-owned GitHub Release creation. Public-package verification now allows approximately 30 minutes for npm processing, with a 35-minute step limit, while retaining exact commit and package-inventory checks.

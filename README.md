@@ -1,8 +1,10 @@
 # pi-claude-usage
 
-> Minimal zero-configuration Pi extension for showing Anthropic Claude subscription usage limits in the statusline
+> Pi extension for Anthropic Claude subscription usage state and optional Fast mode
 
 ![Claude Usage](./banner.jpg)
+
+This extension owns **usage state + usage mode**: zero-configuration quota reporting and an optional per-model Fast preference. Shared command arbitration/JSONC editing belong to [`@llblab/pi-command-fast`](https://github.com/llblab/pi-command-fast), a normal library dependency, not another Pi extension.
 
 This repository is an adaptation of [`pi-codex-usage`](https://github.com/llblab/pi-codex-usage) for Anthropic Claude Pro/Max subscriptions. It keeps the statusline design, but reads quota from the Anthropic OAuth usage endpoint using Pi's own Anthropic login.
 
@@ -23,9 +25,11 @@ This repository is an adaptation of [`pi-codex-usage`](https://github.com/llblab
 - Missing OAuth auth, API-key-only auth, or missing quota windows are shown as `n/a`, not as an error
 - Network/provider failures keep the last good bar, then show `error` after repeated failures
 - Any number of Pi instances share one request stream, see [Shared Refresh](#shared-refresh)
-- No commands or configuration are required
+- No commands or configuration are required for quota display; the optional shared `/fast` toggles native request speed
 
 ## Install
+
+Requires Pi ≥1.0.0 for the native beta-preserving Fast bridge. Older Pi (including 0.84.2) assembles Anthropic headers differently and is not supported by this release.
 
 From npm:
 
@@ -38,6 +42,47 @@ From git:
 ```bash
 pi install git:github.com/llblab/pi-claude-usage
 ```
+
+## Development
+
+The shared `@llblab/pi-command-fast@^0.1.0` dependency now resolves from npm; no sibling library checkout is required.
+
+```bash
+npm ci
+npm run validate
+```
+
+For explicitly local library experiments, a temporary folder link reads the library's built `dist/`, not TypeScript source directly. Rebuild after source edits and restore the registry dependency/lock before publishing; see [Backlog](./BACKLOG.md).
+
+## Fast mode
+
+`/fast` takes no arguments and dispatches by the current **provider**. This consumer permits Fast for the **Opus family** (`claude-opus-` model IDs), without pinning versions. Sonnet, Haiku, Fable, Mythos and other families receive `Fast mode is supported only for Opus` without config writes or quota requests. Family eligibility does not guarantee backend support: older or otherwise unsupported Opus versions can still receive an API rejection. For eligible models it persists only the following model override in Pi's canonical `models.json` (honoring `PI_CODING_AGENT_DIR`):
+
+```json
+{
+  "providers": {
+    "anthropic": {
+      "modelOverrides": {
+        "your-current-model": { "speed": "fast" }
+      }
+    }
+  }
+}
+```
+
+OFF deletes only `speed`; there is no normal/default sentinel or separate Fast config. JSONC comments, unrelated fields and other providers/models survive. State follows the selected model and restart; manual edits are reread on lifecycle refresh and every request. Stale `speed: "fast"` overrides on unsupported models do not enable the suffix or this extension's request bridge; they are preserved, not silently deleted. Remove such a stale property manually if needed.
+
+When Claude Usage and Codex Usage are loaded together, their shared library registers **one** `/fast` in either load order, across separate physical library copies. Its WeakMap is keyed by session manager; shutdown releases registrations because Pi reload reuses that identity. Unrelated providers receive a concise unsupported-provider message; invalid arguments show `Usage: /fast`. Successful toggles are silent and immediately redraw the existing terminal status without a quota request:
+
+```text
+claude ██████▀▀▀▀ 6d fast
+```
+
+Exactly lowercase ` fast` uses the existing dim/countdown role at the final terminal presentation boundary, including loading, single-window percentages, `n/a` and errors. Telegram, quota OAuth, polling, mutex, fencing and backoff are unchanged.
+
+Native request adaptation adds `speed: "fast"` without overwriting an explicit speed. It adds `fast-mode-2026-02-01` to Pi's already-assembled request `betas`, preserving automatic OAuth/thinking/streaming and configured betas; the Anthropic SDK converts that list to the final `anthropic-beta` HTTP header. Setting a replacement header earlier would suppress Pi's automatic betas, so no header replacement or custom provider/transport is used. See [Anthropic Fast mode](https://platform.claude.com/docs/en/build-with-claude/fast-mode).
+
+Pi 1.0.0 accepts the extra override but does not propagate `speed` to native request options, so the bridge is necessary. There is no public command unregister/conditional-visibility API: `/fast` stays listed and checks the provider and consumer model capability when invoked. A stored preference/suffix is intent, not evidence that the backend served Fast. Anthropic also requires Fast usage credits and organization-level permission; a supported model can still be rejected (for example, `429 credits_required` with `org_level_disabled`). The extension never enables billing or buys credits.
 
 ## Statusline
 
@@ -75,7 +120,7 @@ claude error
 
 ## Shared Refresh
 
-The coordination code lives in the `Shared Refresh` section of [`index.ts`](./index.ts); the extension ships as a single TypeScript source file.
+The extension ships an export-only [`index.ts`](./index.ts) and a flat domain DAG under `lib/`, matching Codex Usage's layout. [`extension.ts`](./lib/extension.ts) composes lifecycle/Fast wiring; [`status.ts`](./lib/status.ts) orchestrates refresh and redraw; [`usage-store.ts`](./lib/usage-store.ts) owns shared claims/fencing/mutex; [`query.ts`](./lib/query.ts) owns OAuth/HTTP; [`usage.ts`](./lib/usage.ts) normalizes quotas; [`status-format.ts`](./lib/status-format.ts) formats values; [`telegram.ts`](./lib/telegram.ts) owns optional registration; [`fast.ts`](./lib/fast.ts) adapts native Fast requests. Domains never import the entrypoint, and tests are organized by domain in `tests/`.
 
 To avoid independent polling, instances coordinate through `~/.pi/agent/tmp/pi-claude-usage/usage.json` (percentages and timestamps only, no tokens):
 

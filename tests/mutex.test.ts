@@ -14,7 +14,7 @@ import {
   TAKEOVER_AFTER_MS,
   tryAcquireLock,
   writeState,
-} from "../index.ts";
+} from "../lib/usage-store.ts";
 
 type Worker = {
   child: ChildProcessWithoutNullStreams;
