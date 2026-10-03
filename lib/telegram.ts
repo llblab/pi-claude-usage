@@ -1,5 +1,7 @@
 /** Domain: Telegram status. Owns: optional status-provider discovery and registration. Excludes: quota state and terminal decoration. */
-import type { ClaudeUsageModel } from "./usage.ts";
+import { isFastEnabled } from "./fast.ts";
+import { isAnthropicModel, type ClaudeUsageModel, type ClaudeUsageReport } from "./usage.ts";
+import { formatClaudeUsageStatusValue, STATUS_LABEL_TEXT } from "./status-format.ts";
 const CLAUDE_USAGE_EXTENSION_ID = "@llblab/pi-claude-usage";
 const TELEGRAM_STATUS_IMPORT_SPECIFIERS = [
   "@llblab/pi-telegram/status",
@@ -17,6 +19,18 @@ type TelegramStatusLineModule = {
     options: { id: string },
   ) => () => void;
 };
+
+/** Read the selected model's preference at menu render time, not from the terminal cache. */
+export function claudeUsageTelegramStatusLine(
+  report: ClaudeUsageReport | undefined,
+  activeModel: ClaudeUsageModel | undefined,
+): TelegramStatusLineProviderResult {
+  if (!activeModel || !isAnthropicModel(activeModel)) return undefined;
+  const value = report ? formatClaudeUsageStatusValue(report) : undefined;
+  const fast = isFastEnabled(activeModel.id);
+  if (!value && !fast) return undefined;
+  return { label: STATUS_LABEL_TEXT, value: value ? `${value}${fast ? " fast" : ""}` : "fast" };
+}
 
 async function importTelegramStatusLineModule(): Promise<
   TelegramStatusLineModule | undefined

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1: Telegram Fast Status
+
+- The optional Telegram status row now appends lowercase ` fast` for the active eligible Opus model, or shows `fast` alone when quota is unavailable. It rereads the per-model preference at menu render time, so toggles and model changes do not wait for quota refresh. Unsupported Claude families ignore stale Fast overrides. Quota polling, auth, request adaptation and terminal behavior are unchanged; isolated tests cover eligibility, model/provider changes and unreadable configuration.
+
 ## 0.2.0: Shared Fast Mode and Pi 1.0 Baseline
 
 - Split the monolithic extension into cohesive `lib/` domains matching Codex Usage: composition, status lifecycle, shared state, OAuth query, quota normalization, formatting, Telegram and Fast. `index.ts` now only re-exports the unchanged public API; tests follow domain owners. Quota/auth/leadership, mutex/fencing/backoff, status redraw and Fast behavior are preserved.

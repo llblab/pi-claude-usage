@@ -4,9 +4,9 @@ import { type ExtensionAPI, type ExtensionContext, getAgentDir } from "@earendil
 import { isFastEnabled } from "./fast.ts";
 import { claimRefresh, isRefreshDue, nextRefreshAt, ownsRefreshClaim, publishRefresh, readState, MIN_ATTEMPT_GAP_MS, type SharedState } from "./usage-store.ts";
 import { isAnthropicModel, type ClaudeUsageModel, type ClaudeUsageReport } from "./usage.ts";
-import { DUAL_BAR_WIDTH, STATUS_LABEL_TEXT, formatClaudeUsageBar, formatClaudeUsageStatusValue, formatClaudeUsageStatusline, formatStatuslineLoading, formatStatuslineProblem, nextResetCountdownDelayMs } from "./status-format.ts";
+import { DUAL_BAR_WIDTH, formatClaudeUsageBar, formatClaudeUsageStatusline, formatStatuslineLoading, formatStatuslineProblem, nextResetCountdownDelayMs } from "./status-format.ts";
 import { queryUsage } from "./query.ts";
-import { registerClaudeUsageTelegramStatusLine } from "./telegram.ts";
+import { claudeUsageTelegramStatusLine, registerClaudeUsageTelegramStatusLine } from "./telegram.ts";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const SECOND_MS = 1000;
@@ -57,12 +57,7 @@ export function createClaudeUsageStatus(pi: ExtensionAPI) {
   const ensureTelegramStatusLineRegistered = () => {
     if (unregisterTelegramStatusLine || telegramStatusLineRegistration) return;
     telegramStatusLineRegistration = registerClaudeUsageTelegramStatusLine(
-      ({ activeModel }) => {
-        if (!isAnthropicModel(activeModel)) return undefined;
-        if (!shown.report) return undefined;
-        const value = formatClaudeUsageStatusValue(shown.report);
-        return value ? { label: STATUS_LABEL_TEXT, value } : undefined;
-      },
+      ({ activeModel }) => claudeUsageTelegramStatusLine(shown.report, activeModel),
     )
       .then((unregister) => {
         unregisterTelegramStatusLine = unregister;

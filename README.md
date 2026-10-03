@@ -78,7 +78,7 @@ When Claude Usage and Codex Usage are loaded together, their shared library regi
 claude ██████▀▀▀▀ 6d fast
 ```
 
-Exactly lowercase ` fast` uses the existing dim/countdown role at the final terminal presentation boundary, including loading, single-window percentages, `n/a` and errors. Telegram, quota OAuth, polling, mutex, fencing and backoff are unchanged.
+Exactly lowercase ` fast` uses the existing dim/countdown role at the final terminal presentation boundary, including loading, single-window percentages, `n/a` and errors. Telegram also appends plain-text ` fast` for the active eligible model; quota OAuth, polling, mutex, fencing and backoff are unchanged.
 
 Native request adaptation adds `speed: "fast"` without overwriting an explicit speed. It adds `fast-mode-2026-02-01` to Pi's already-assembled request `betas`, preserving automatic OAuth/thinking/streaming and configured betas; the Anthropic SDK converts that list to the final `anthropic-beta` HTTP header. Setting a replacement header earlier would suppress Pi's automatic betas, so no header replacement or custom provider/transport is used. See [Anthropic Fast mode](https://platform.claude.com/docs/en/build-with-claude/fast-mode).
 
@@ -143,6 +143,8 @@ If `@llblab/pi-telegram` is loaded with the public status-line provider API, thi
 ```text
 claude: ██████▀▀▀▀ 6d
 ```
+
+When Fast is enabled for the active Opus model, the row appends plain-text ` fast`; without a usable quota report it shows `claude: fast`. The preference is reread when the menu is rendered, so toggles and model changes do not depend on a quota refresh. Unsupported Claude families never show Fast, even with stale overrides.
 
 If `pi-telegram` is absent or older, or the active model is not Anthropic, no Telegram row is added.
 
