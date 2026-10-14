@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2: Windows CI Validation
+
+- Added Linux and Windows GitHub Actions validation that runs the full release check suite (typecheck, tests, extension import, dependency audit and package dry-run) on every push to `main` and pull request, so the shared-refresh SQLite mutex, atomic state writes and path handling are exercised on Windows. The extension runtime is unchanged from 0.2.1.
+
 ## 0.2.1: Telegram Fast Status
 
 - The optional Telegram status row now appends lowercase ` fast` for the active eligible Opus model, or shows `fast` alone when quota is unavailable. It rereads the per-model preference at menu render time, so toggles and model changes do not wait for quota refresh. Unsupported Claude families ignore stale Fast overrides. Quota polling, auth, request adaptation and terminal behavior are unchanged; isolated tests cover eligibility, model/provider changes and unreadable configuration.
