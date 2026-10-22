@@ -38,21 +38,51 @@ test("formats the dual quota bar with 20 steps per window", () => {
   assert.equal(formatClaudeUsageBar({}), undefined);
 });
 
-test("keeps positive remaining quota visible at the empty edge", () => {
-  assert.equal(
-    formatClaudeUsageBar({
-      primary: { usedPercent: 99.9 },
-      secondary: { usedPercent: 100 },
-    }),
-    "▘⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-  );
-  assert.equal(
-    formatClaudeUsageBar({
-      primary: { usedPercent: 100 },
-      secondary: { usedPercent: 100 },
-    }),
-    "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-  );
+test("aligns empty quota halves and shared error background with rounded zero percent", () => {
+  for (const [usedPercent, displayedRemaining] of [[98, 2], [99, 1], [99.5, 1], [99.51, 0], [99.9, 0], [100, 0], [101, 0]]) {
+    const exhausted = displayedRemaining === 0;
+    const background = exhausted ? "toolErrorBg" : "userMessageBg";
+    assert.equal(
+      formatClaudeUsageStatusValue({ primary: { usedPercent } }),
+      `${displayedRemaining}%`,
+    );
+    for (const window of ["primary", "secondary"] as const) {
+      const report = {
+        primary: { usedPercent: 50 },
+        secondary: { usedPercent: 50 },
+        [window]: { usedPercent },
+      };
+      const bar = window === "primary"
+        ? `${exhausted ? "▄" : "▙"}▄▄▄▄⠀⠀⠀⠀⠀`
+        : `${exhausted ? "▀" : "▛"}▀▀▀▀⠀⠀⠀⠀⠀`;
+      assert.equal(formatClaudeUsageBar(report), bar);
+      assert.equal(
+        formatClaudeUsageStatusline(report, testCtx),
+        `<fg:accent>claude</fg> <bg:${background}><fg:dim>${bar}</fg></bg>`,
+      );
+    }
+    assert.equal(
+      formatClaudeUsageBar({
+        primary: { usedPercent },
+        secondary: { usedPercent },
+      }),
+      exhausted ? "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀" : "▌⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+    );
+  }
+});
+
+test("rounds near-full quota to the nearest of twenty steps without an error background", () => {
+  for (const [usedPercent, bar] of [[0, "██████████"], [1, "██████████"], [2.5, "██████████"], [2.51, "█████████▌"]] as const) {
+    const report = {
+      primary: { usedPercent },
+      secondary: { usedPercent },
+    };
+    assert.equal(formatClaudeUsageBar(report), bar);
+    assert.equal(
+      formatClaudeUsageStatusline(report, testCtx),
+      `<fg:accent>claude</fg> <bg:userMessageBg><fg:dim>${bar}</fg></bg>`,
+    );
+  }
 });
 
 test("formats a single window as remaining percentage and reset", () => {
@@ -227,6 +257,15 @@ test("formats exhausted primary windows with the full dual bar", () => {
     ),
     "▄▄▄▄▄⠀⠀⠀⠀⠀ 7d",
   );
+});
+
+test("uses the exhausted countdown and redraw boundary for rounded zero percent", () => {
+  const report = {
+    primary: { usedPercent: 99.9, resetAt: now + 59 * secondMs + 250 },
+    secondary: { usedPercent: 50, resetAt: now + 7 * dayMs },
+  };
+  assert.equal(formatClaudeUsageStatusValue(report, now), "▄▄▄▄▄⠀⠀⠀⠀⠀ 59s/7d");
+  assert.equal(nextResetCountdownDelayMs(report, now), 251);
 });
 
 test("schedules exhausted primary countdown redraws by the nearest reset label", () => {

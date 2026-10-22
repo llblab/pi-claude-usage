@@ -262,9 +262,8 @@ function filledParts(
   window: NormalizedRateLimitWindow | undefined,
   totalParts: number,
 ): number {
-  if (!window) return 0;
+  if (!window || isQuotaWindowExhausted(window)) return 0;
   const remaining = remainingPercent(window);
-  if (remaining <= 0) return 0;
   return Math.max(1, Math.round(remaining / (100 / totalParts)));
 }
 
@@ -275,7 +274,7 @@ function remainingPercent(window: NormalizedRateLimitWindow): number {
 function isQuotaWindowExhausted(
   window: NormalizedRateLimitWindow | undefined,
 ): boolean {
-  return window !== undefined && remainingPercent(window) <= 0;
+  return window !== undefined && Math.round(remainingPercent(window)) === 0;
 }
 
 function hasExhaustedQuotaWindow(report: ClaudeUsageReport): boolean {

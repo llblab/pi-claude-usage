@@ -90,7 +90,7 @@ Pi 1.0.0 accepts the extra override but does not propagate `speed` to native req
 claude ██████▀▀▀▀ 6d
 ```
 
-The ten-character bar encodes two twenty-step limits at once: the top quadrants show the remaining 5-hour limit and the bottom quadrants show the remaining weekly limit. If either window is exhausted, the bar keeps its shape but switches to the error background color.
+The ten-character bar encodes two twenty-step limits at once: the top quadrants show the remaining 5-hour limit and the bottom quadrants show the remaining weekly limit. When either window's remaining percentage rounds to `0%`, that half becomes completely empty and the entire dual bar switches to the error background color; the other half still shows its remaining quota.
 
 When the weekly reset time is available, it follows the bar. More than a day remains is shown in 144-minute day-tenth steps such as `7d`, `6.9d`, `1.1d`, rounded upward. At 24 hours and below it switches to upward-rounded hour-tenths such as `24h`, `23.7h`, `1.1h`, `1h`. Under an hour it shows floored minutes, then seconds. After the reset passes, `0s` is held until the next successful refresh.
 
@@ -100,7 +100,7 @@ When the 5-hour window is exhausted and exposes its reset time, the statusline a
 claude ▄▄▄▄▄⠀⠀⠀⠀⠀ 5h/7d
 ```
 
-If only one window is returned, the exact remaining percentage is shown:
+If only one window is returned, the remaining percentage rounded to the nearest integer is shown:
 
 ```text
 claude 67% 7d

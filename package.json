@@ -1,6 +1,6 @@
 {
   "name": "@llblab/pi-claude-usage",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": false,
   "description": "Minimal Pi extension that shows Anthropic Claude subscription usage limits using Pi OAuth auth",
   "keywords": [

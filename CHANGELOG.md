@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3: Empty Quota Bar Hotfix
+
+- Aligned quota bars with rounded remaining percentages: when either window rounds to `0%`, its final segment disappears and the whole dual bar uses the error background, while the other half retains its quota. The 5-hour reset countdown follows the same zero boundary; near-full quota still rounds to the nearest 5% step.
+
 ## 0.2.2: Windows CI Validation
 
 - Added Linux and Windows GitHub Actions validation that runs the full release check suite (typecheck, tests, extension import, dependency audit and package dry-run) on every push to `main` and pull request, so the shared-refresh SQLite mutex, atomic state writes and path handling are exercised on Windows. The extension runtime is unchanged from 0.2.1.
