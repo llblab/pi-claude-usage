@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.4: Quota Polling Hotfix
+
+- Reduced shared quota polling from once a minute to once every three minutes to lower request pressure on Anthropic's usage endpoint. Follower takeover now waits three minutes and thirty seconds so multiple instances preserve the slower cadence. Shared HTTP 429 backoff and local reset countdown updates remain in place.
+
 ## 0.2.3: Empty Quota Bar Hotfix
 
 - Aligned quota bars with rounded remaining percentages: when either window rounds to `0%`, its final segment disappears and the whole dual bar uses the error background, while the other half retains its quota. The 5-hour reset countdown follows the same zero boundary; near-full quota still rounds to the nearest 5% step.

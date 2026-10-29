@@ -9,6 +9,7 @@ import {
   failureBackoffMs,
   isRefreshDue,
   LEADER_INTERVAL_MS,
+  MIN_ATTEMPT_GAP_MS,
   nextRefreshAt,
   ownsRefreshClaim,
   publishRefresh,
@@ -41,18 +42,21 @@ test("round-trips state atomically and tolerates missing or corrupt files", with
   assert.equal(readState(dir), undefined);
 }));
 
-test("the leader refreshes after 1 minute and others only after 90 seconds", () => {
+test("the leader refreshes after 3 minutes and others only after 210 seconds", () => {
   const state = { report: {}, updatedAt: 1_000_000, owner: "leader" };
-  assert.equal(LEADER_INTERVAL_MS, minuteMs);
-  assert.equal(TAKEOVER_AFTER_MS, 1.5 * minuteMs);
+  assert.equal(LEADER_INTERVAL_MS, 3 * minuteMs);
+  assert.equal(MIN_ATTEMPT_GAP_MS, 3 * minuteMs);
+  assert.equal(TAKEOVER_AFTER_MS, 3.5 * minuteMs);
 
   const at = (ms: number) => state.updatedAt + ms;
-  assert.equal(isRefreshDue(state, "leader", at(minuteMs - 1)), false);
-  assert.equal(isRefreshDue(state, "leader", at(minuteMs)), true);
-  assert.equal(isRefreshDue(state, "other", at(minuteMs)), false);
-  assert.equal(isRefreshDue(state, "other", at(1.5 * minuteMs - 1)), false);
-  assert.equal(isRefreshDue(state, "other", at(1.5 * minuteMs)), true);
-  assert.equal(nextRefreshAt(state, "other", at(0)), at(1.5 * minuteMs));
+  assert.equal(isRefreshDue(state, "leader", at(minuteMs)), false);
+  assert.equal(isRefreshDue(state, "other", at(1.5 * minuteMs)), false);
+  assert.equal(isRefreshDue(state, "leader", at(3 * minuteMs - 1)), false);
+  assert.equal(isRefreshDue(state, "leader", at(3 * minuteMs)), true);
+  assert.equal(isRefreshDue(state, "other", at(3 * minuteMs)), false);
+  assert.equal(isRefreshDue(state, "other", at(3.5 * minuteMs - 1)), false);
+  assert.equal(isRefreshDue(state, "other", at(3.5 * minuteMs)), true);
+  assert.equal(nextRefreshAt(state, "other", at(0)), at(3.5 * minuteMs));
 });
 
 test("a leadership claim makes everyone else not due before the fetch finishes", () => {
@@ -63,11 +67,11 @@ test("a leadership claim makes everyone else not due before the fetch finishes",
   const claimed = { ...stale, owner: "follower", claimedAt: now };
   assert.equal(isRefreshDue(claimed, "other", now + 1), false);
   assert.equal(isRefreshDue(claimed, "follower", now + 1), false);
-  // The claimer is leader now: due again one minute after the claim.
-  assert.equal(isRefreshDue(claimed, "follower", now + minuteMs), true);
-  assert.equal(isRefreshDue(claimed, "other", now + minuteMs), false);
+  // The claimer is leader now: due again three minutes after the claim.
+  assert.equal(isRefreshDue(claimed, "follower", now + 3 * minuteMs), true);
+  assert.equal(isRefreshDue(claimed, "other", now + 3 * minuteMs), false);
   // A crashed claimer is replaced after the takeover window.
-  assert.equal(isRefreshDue(claimed, "other", now + 1.5 * minuteMs), true);
+  assert.equal(isRefreshDue(claimed, "other", now + 3.5 * minuteMs), true);
 });
 
 test("an empty state is due for everyone immediately", () => {
@@ -159,6 +163,8 @@ test("claims are written before authorization and checked from disk every time",
   assert.equal(readState(dir)?.claimId, claim.claimId);
   assert.equal(ownsRefreshClaim(dir, claim, now), true);
   assert.equal(claimRefresh(dir, "b", now + 1), undefined);
+  assert.equal(claimRefresh(dir, "a", now + minuteMs), undefined);
+  assert.equal(claimRefresh(dir, "b", now + 1.5 * minuteMs), undefined);
   assert.equal(ownsRefreshClaim(dir, claim, now + TAKEOVER_AFTER_MS), false);
   assert.equal(publishRefresh(dir, claim, { ok: true, report: {} }, now + TAKEOVER_AFTER_MS), false);
 

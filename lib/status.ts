@@ -210,7 +210,7 @@ export function createClaudeUsageStatus(pi: ExtensionAPI) {
   };
 
   /**
-   * When this instance is due (leader after 1 minute, anyone after 90 seconds) it
+   * When this instance is due (leader after 3 minutes, anyone after 210 seconds) it
    * claims leadership under the lock (owner and timestamp, so no other
    * instance is due), then fetches, then stamps the outcome. Failures are
    * published with a backoff so other instances do not pile on.

@@ -17,11 +17,11 @@ import type { ClaudeUsageReport } from "./usage.ts";
  * atomic renames; short critical sections use an OS-backed SQLite mutex.
  */
 
-export const LEADER_INTERVAL_MS = 60_000;
+export const LEADER_INTERVAL_MS = 3 * 60_000;
 /** The leader is considered gone after missing its slot by 30 seconds. */
 export const TAKEOVER_AFTER_MS = LEADER_INTERVAL_MS + 30_000;
 /** Minimum pause between two fetch attempts of the same instance. */
-export const MIN_ATTEMPT_GAP_MS = 60_000;
+export const MIN_ATTEMPT_GAP_MS = LEADER_INTERVAL_MS;
 
 const STATE_FILE = "usage.json";
 const LOCK_FILE = "mutex.sqlite";
