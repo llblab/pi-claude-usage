@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.5: Reactive Quota Indicators
+
+- Added an immediate quota-display response to the specific native Anthropic subscription account-limit error. At most one window with strictly less than 5% remaining is inferred exhausted; when both are near-empty, an empirical weekly-to-five-hour budget ratio of 6:1 selects the smaller equivalent balance, preferring five-hour on ties. An already exhausted measured window leaves the other untouched. The shared signal makes no extra quota requests and preserves measured data, leadership and retry deadlines; a successful refresh started after the signal restores authoritative values. Other providers, proxies, API-key models, generic throttling and Fast credit errors do not trigger it.
+- Changed shared quota polling from every three minutes to every two minutes, with follower takeover after two minutes and thirty seconds. Shared usage-endpoint failure backoff is preserved.
+
 ## 0.2.4: Quota Polling Hotfix
 
 - Reduced shared quota polling from once a minute to once every three minutes to lower request pressure on Anthropic's usage endpoint. Follower takeover now waits three minutes and thirty seconds so multiple instances preserve the slower cadence. Shared HTTP 429 backoff and local reset countdown updates remain in place.

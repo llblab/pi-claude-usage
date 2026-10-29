@@ -18,6 +18,7 @@ This repository is an adaptation of [`pi-codex-usage`](https://github.com/llblab
 
 - Shows two counter-moving half-height markers in the statusline bar while quota is loading, then keeps the bar fresh (the countdown ticks locally)
 - Keeps the last usable bar visible during ordinary refreshes instead of replacing known quota with a loading state
+- Immediately rounds one likely exhausted near-empty window to zero on the specific native Anthropic subscription account-limit error, without making an extra quota request
 - Dual bar: the top half shows the 5-hour session window and the bottom half shows the 7-day window, 20 steps (5% each) per window
 - If only one window is returned, shows its remaining percentage and reset countdown instead of a bar
 - Shown only while the active model uses the Pi `anthropic` provider
@@ -118,23 +119,31 @@ Runtime failure, such as a network or provider error (including rate limiting of
 claude error
 ```
 
+## Passive Model-Limit Signal
+
+For the native `anthropic` provider, Claude model IDs using `anthropic-messages` at `https://api.anthropic.com` with Pi OAuth auth, the extension also observes failed assistant messages. It recognizes HTTP 429 with a JSON error envelope whose `type` is `error`, `error.type` is `rate_limit_error`, and `error.message` is exactly `This request would exceed your account's rate limit. Please try again later.` (ignoring whitespace differences). API-key models, proxies, other providers, generic throttling, Fast credit errors and errors from the usage endpoint do not trigger it.
+
+On this signal, at most one cached window with **strictly less than 5% remaining** is immediately displayed as zero. If only one window is near-empty, it is selected; a sole near-empty weekly window also qualifies. If both windows are near-empty, compare the five-hour remaining percentage with **six times the weekly remaining percentage** and select the smaller balance, preferring the five-hour window on ties. This uses an empirical estimate that one weekly budget is approximately six full five-hour budgets, not an official Anthropic quota guarantee. For example, 2% five-hour versus 1% weekly selects five-hour (2 versus 6), while 4% five-hour versus 0.5% weekly selects weekly (4 versus 3). Exactly 5% and larger balances are unchanged. If either measured window is already exhausted, the other window is not additionally zeroed. Existing exhausted-window colors and reset countdowns are reused.
+
+This is a display inference, not an authoritative quota measurement: the error itself does not identify the exhausted window. The measured `report` and `updatedAt` remain unchanged. A separate `modelRateLimitedAt` marker is shared under the existing mutex without changing ownership, the lease, or retry deadlines. The receiving instance redraws immediately; other instances pick it up on their normal file-read ticks (within 30 seconds). A successful quota refresh started after the signal clears it; an already-in-flight response or another failure cannot erase it. No extra quota request is made, and Pi's model retry behavior is unchanged.
+
 ## Shared Refresh
 
-The extension ships an export-only [`index.ts`](./index.ts) and a flat domain DAG under `lib/`, matching Codex Usage's layout. [`extension.ts`](./lib/extension.ts) composes lifecycle/Fast wiring; [`status.ts`](./lib/status.ts) orchestrates refresh and redraw; [`usage-store.ts`](./lib/usage-store.ts) owns shared claims/fencing/mutex; [`query.ts`](./lib/query.ts) owns OAuth/HTTP; [`usage.ts`](./lib/usage.ts) normalizes quotas; [`status-format.ts`](./lib/status-format.ts) formats values; [`telegram.ts`](./lib/telegram.ts) owns optional registration; [`fast.ts`](./lib/fast.ts) adapts native Fast requests. Domains never import the entrypoint, and tests are organized by domain in `tests/`.
+The extension ships an export-only [`index.ts`](./index.ts) and a flat domain DAG under `lib/`, matching Codex Usage's layout. [`extension.ts`](./lib/extension.ts) composes lifecycle/Fast wiring; [`status.ts`](./lib/status.ts) orchestrates refresh and redraw; [`usage-store.ts`](./lib/usage-store.ts) owns shared claims/fencing/mutex; [`query.ts`](./lib/query.ts) owns OAuth/HTTP; [`usage.ts`](./lib/usage.ts) normalizes quotas; [`model-limit.ts`](./lib/model-limit.ts) recognizes the narrow passive model-error signal and derives near-empty window overrides; [`status-format.ts`](./lib/status-format.ts) formats values; [`telegram.ts`](./lib/telegram.ts) owns optional registration; [`fast.ts`](./lib/fast.ts) adapts native Fast requests. Domains never import the entrypoint, and tests are organized by domain in `tests/`.
 
 To avoid independent polling, instances coordinate through `~/.pi/agent/tmp/pi-claude-usage/usage.json` (percentages and timestamps only, no tokens):
 
-- The instance that last updated the file is the leader and refreshes it every 3 minutes
+- The instance that last updated the file is the leader and refreshes it every 2 minutes
 - Every other instance only reads the file (re-checking every ≤30s) and redraws when it changes
-- Leadership is never cached in memory: before each usage request, the instance re-reads the file and checks its `owner`, unique `claimId`, and 210s lease. Publication rechecks that claim under the lock; a superseded success or failure is discarded. Failed locks or unwritten claims never authorize a request
-- If the file is 210 seconds old (leader is closed, busy, or asleep), the first follower that obtains the mutex takes over: it re-reads the JSON, writes itself as the leader with a fresh timestamp, releases the mutex, then fetches from the server and publishes under the mutex after rechecking its claim. Its next refresh is three minutes later; JSON writes remain atomic renames
+- Leadership is never cached in memory: before each usage request, the instance re-reads the file and checks its `owner`, unique `claimId`, and 150s lease. Publication rechecks that claim under the lock; a superseded success or failure is discarded. Failed locks or unwritten claims never authorize a request
+- If the file is 150 seconds old (leader is closed, busy, or asleep), the first follower that obtains the mutex takes over: it re-reads the JSON, writes itself as the leader with a fresh timestamp, releases the mutex, then fetches from the server and publishes under the mutex after rechecking its claim. Its next refresh is two minutes later; JSON writes remain atomic renames
 - Claiming and publication use a non-waiting transaction in `mutex.sqlite`, through Node's built-in `node:sqlite` (Node ≥22.19.0, the existing package minimum). It stores no quota or leadership records and needs no extra package or service. The OS releases the lock when the connection closes or the process dies; there is no timeout-based lock stealing
 - Failures are written to the file with an exponential backoff (1 to 5 minutes; 5 to 30 minutes for HTTP 429) that applies to all instances
 - The last report stays visible for up to an hour; after that `error` is shown
 
 Coordination assumes a local filesystem and cooperating instances on the same machine. Never delete or replace `mutex.sqlite` while instances are running. Network requests do not hold the mutex; a process paused inside a short critical section keeps it until it resumes or exits, so other writers retry later without blocking the TUI. This preserves exclusion instead of stealing a live lock.
 
-**Upgrade:** Close all old instances before starting updated ones. The legacy `lock` files are ignored; old and new locking protocols must not run together. Cached `usage.json` data needs no migration.
+**Upgrade:** Close all old instances before starting updated ones. The legacy `lock` files are ignored; old and new locking protocols must not run together. Cached `usage.json` data needs no migration. Restart all instances after updating so none retain an older polling interval or ignore the passive model-limit signal.
 
 ## Telegram Status Menu
 

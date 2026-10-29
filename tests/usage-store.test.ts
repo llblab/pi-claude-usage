@@ -14,6 +14,7 @@ import {
   ownsRefreshClaim,
   publishRefresh,
   readState,
+  recordModelRateLimit,
   TAKEOVER_AFTER_MS,
   tryAcquireLock,
   writeState,
@@ -42,21 +43,21 @@ test("round-trips state atomically and tolerates missing or corrupt files", with
   assert.equal(readState(dir), undefined);
 }));
 
-test("the leader refreshes after 3 minutes and others only after 210 seconds", () => {
+test("the leader refreshes after 2 minutes and others only after 150 seconds", () => {
   const state = { report: {}, updatedAt: 1_000_000, owner: "leader" };
-  assert.equal(LEADER_INTERVAL_MS, 3 * minuteMs);
-  assert.equal(MIN_ATTEMPT_GAP_MS, 3 * minuteMs);
-  assert.equal(TAKEOVER_AFTER_MS, 3.5 * minuteMs);
+  assert.equal(LEADER_INTERVAL_MS, 2 * minuteMs);
+  assert.equal(MIN_ATTEMPT_GAP_MS, 2 * minuteMs);
+  assert.equal(TAKEOVER_AFTER_MS, 2.5 * minuteMs);
 
   const at = (ms: number) => state.updatedAt + ms;
   assert.equal(isRefreshDue(state, "leader", at(minuteMs)), false);
   assert.equal(isRefreshDue(state, "other", at(1.5 * minuteMs)), false);
-  assert.equal(isRefreshDue(state, "leader", at(3 * minuteMs - 1)), false);
-  assert.equal(isRefreshDue(state, "leader", at(3 * minuteMs)), true);
-  assert.equal(isRefreshDue(state, "other", at(3 * minuteMs)), false);
-  assert.equal(isRefreshDue(state, "other", at(3.5 * minuteMs - 1)), false);
-  assert.equal(isRefreshDue(state, "other", at(3.5 * minuteMs)), true);
-  assert.equal(nextRefreshAt(state, "other", at(0)), at(3.5 * minuteMs));
+  assert.equal(isRefreshDue(state, "leader", at(2 * minuteMs - 1)), false);
+  assert.equal(isRefreshDue(state, "leader", at(2 * minuteMs)), true);
+  assert.equal(isRefreshDue(state, "other", at(2 * minuteMs)), false);
+  assert.equal(isRefreshDue(state, "other", at(2.5 * minuteMs - 1)), false);
+  assert.equal(isRefreshDue(state, "other", at(2.5 * minuteMs)), true);
+  assert.equal(nextRefreshAt(state, "other", at(0)), at(2.5 * minuteMs));
 });
 
 test("a leadership claim makes everyone else not due before the fetch finishes", () => {
@@ -67,11 +68,11 @@ test("a leadership claim makes everyone else not due before the fetch finishes",
   const claimed = { ...stale, owner: "follower", claimedAt: now };
   assert.equal(isRefreshDue(claimed, "other", now + 1), false);
   assert.equal(isRefreshDue(claimed, "follower", now + 1), false);
-  // The claimer is leader now: due again three minutes after the claim.
-  assert.equal(isRefreshDue(claimed, "follower", now + 3 * minuteMs), true);
-  assert.equal(isRefreshDue(claimed, "other", now + 3 * minuteMs), false);
+  // The claimer is leader now: due again two minutes after the claim.
+  assert.equal(isRefreshDue(claimed, "follower", now + 2 * minuteMs), true);
+  assert.equal(isRefreshDue(claimed, "other", now + 2 * minuteMs), false);
   // A crashed claimer is replaced after the takeover window.
-  assert.equal(isRefreshDue(claimed, "other", now + 3.5 * minuteMs), true);
+  assert.equal(isRefreshDue(claimed, "other", now + 2.5 * minuteMs), true);
 });
 
 test("an empty state is due for everyone immediately", () => {
@@ -204,6 +205,59 @@ test("unavailable locks or failed claim writes grant no permission", withDir((di
   rmSync(dir);
   mkdirSync(join(dir, "usage.json"), { recursive: true });
   assert.equal(claimRefresh(dir, "a", 1), undefined);
+}));
+
+test("model-error observations preserve measured quota, ownership and backoff", withDir((dir) => {
+  const now = 1_000_000;
+  const state = {
+    owner: "leader", claimId: "generation", claimedAt: now, updatedAt: now - 1,
+    report: { primary: { usedPercent: 97 }, secondary: { usedPercent: 17 } },
+    error: "429", failures: 2, retryNotBefore: now + 10 * minuteMs,
+  };
+  writeState(dir, state);
+  const dueAt = nextRefreshAt(state, "other", now);
+  assert.equal(recordModelRateLimit(dir, now + 1), true);
+  assert.deepEqual(readState(dir), { ...state, modelRateLimitedAt: now + 1 });
+  assert.equal(nextRefreshAt(readState(dir), "other", now), dueAt);
+  assert.equal(ownsRefreshClaim(dir, { owner: state.owner, claimId: state.claimId }, now + 1), true);
+  const release = tryAcquireLock(dir);
+  assert.ok(release);
+  try {
+    assert.equal(recordModelRateLimit(dir, now + 2), false);
+    assert.deepEqual(readState(dir), { ...state, modelRateLimitedAt: now + 1 });
+  } finally { release(); }
+  for (const report of [
+    { primary: { usedPercent: 95 } }, { secondary: { usedPercent: 17 } }, {},
+    { primary: { usedPercent: 100 }, secondary: { usedPercent: 98 } },
+    { primary: { usedPercent: 98 }, secondary: { usedPercent: 100 } },
+  ]) {
+    writeState(dir, { ...state, report });
+    assert.equal(recordModelRateLimit(dir, now + 1), false);
+    assert.deepEqual(readState(dir), { ...state, report });
+  }
+  writeState(dir, { ...state, report: { secondary: { usedPercent: 97 } } });
+  assert.equal(recordModelRateLimit(dir, now + 1), true);
+}));
+
+test("only a successful refresh started after a model-error signal clears it", withDir((dir) => {
+  const now = 1_000_000;
+  writeState(dir, { report: { primary: { usedPercent: 97 } }, updatedAt: 0 });
+  const claim = claimRefresh(dir, "a", now);
+  assert.ok(claim);
+  assert.equal(recordModelRateLimit(dir, now + 1), true);
+  assert.equal(publishRefresh(dir, claim, { ok: true, report: { primary: { usedPercent: 98 } } }, now + 2), true);
+  assert.equal(readState(dir)?.modelRateLimitedAt, now + 1);
+  const afterSignal = claimRefresh(dir, "a", now + 2 + LEADER_INTERVAL_MS);
+  assert.ok(afterSignal);
+  assert.equal(publishRefresh(dir, afterSignal, { ok: false, error: "429", rateLimited: true }, now + 3 + LEADER_INTERVAL_MS), true);
+  assert.equal(readState(dir)?.modelRateLimitedAt, now + 1);
+  const retryAt = readState(dir)!.retryNotBefore!;
+  const retry = claimRefresh(dir, "a", retryAt);
+  assert.ok(retry);
+  assert.equal(publishRefresh(dir, retry, { ok: true, report: { primary: { usedPercent: 5 } } }, retryAt + 1), true);
+  assert.equal(readState(dir)?.modelRateLimitedAt, undefined);
+  assert.equal(readState(dir)?.report?.primary?.usedPercent, 5);
+  assert.equal(readState(dir)?.retryNotBefore, undefined);
 }));
 
 test("publishing a failure shares backoff and a later success clears it", withDir((dir) => {

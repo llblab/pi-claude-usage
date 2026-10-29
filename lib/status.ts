@@ -2,10 +2,11 @@
 import { join } from "node:path";
 import { type ExtensionAPI, type ExtensionContext, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { isFastEnabled } from "./fast.ts";
-import { claimRefresh, isRefreshDue, nextRefreshAt, ownsRefreshClaim, publishRefresh, readState, MIN_ATTEMPT_GAP_MS, type SharedState } from "./usage-store.ts";
+import { claimRefresh, isRefreshDue, nextRefreshAt, ownsRefreshClaim, publishRefresh, readState, recordModelRateLimit, MIN_ATTEMPT_GAP_MS, type SharedState } from "./usage-store.ts";
 import { isAnthropicModel, type ClaudeUsageModel, type ClaudeUsageReport } from "./usage.ts";
 import { DUAL_BAR_WIDTH, formatClaudeUsageBar, formatClaudeUsageStatusline, formatStatuslineLoading, formatStatuslineProblem, nextResetCountdownDelayMs } from "./status-format.ts";
 import { queryUsage } from "./query.ts";
+import { applyModelRateLimit, isSubscriptionRateLimit } from "./model-limit.ts";
 import { claudeUsageTelegramStatusLine, registerClaudeUsageTelegramStatusLine } from "./telegram.ts";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -187,12 +188,12 @@ export function createClaudeUsageStatus(pi: ExtensionAPI) {
       state?.report &&
       state.updatedAt !== undefined &&
       Date.now() - state.updatedAt < STALE_REPORT_MAX_AGE_MS
-        ? state.report
+        ? state.modelRateLimitedAt !== undefined ? applyModelRateLimit(state.report) : state.report
         : undefined;
     if (usable) {
-      const key = `report:${state?.updatedAt}`;
+      const key = `report:${state?.updatedAt}:${state?.modelRateLimitedAt ?? ""}`;
       if (!force && shown.key === key) return;
-      const blink = shown.report
+      const blink = state?.modelRateLimitedAt === undefined && shown.report
         ? formatClaudeUsageBar(shown.report) !== formatClaudeUsageBar(usable)
         : false;
       shown = { key, report: usable, updatedAt: state?.updatedAt };
@@ -210,7 +211,7 @@ export function createClaudeUsageStatus(pi: ExtensionAPI) {
   };
 
   /**
-   * When this instance is due (leader after 3 minutes, anyone after 210 seconds) it
+   * When this instance is due (leader after 2 minutes, anyone after 150 seconds) it
    * claims leadership under the lock (owner and timestamp, so no other
    * instance is due), then fetches, then stamps the outcome. Failures are
    * published with a backoff so other instances do not pile on.
@@ -330,6 +331,17 @@ export function createClaudeUsageStatus(pi: ExtensionAPI) {
       );
     } else {
       clearUsageStatusline(ctx);
+    }
+  });
+
+  pi.on("message_end", (event, ctx) => {
+    const message = event.message;
+    if (message.role !== "assistant" || message.provider !== "anthropic" || message.stopReason !== "error") return;
+    const model = ctx.modelRegistry.find(message.provider, message.model);
+    if (!model || !isSubscriptionRateLimit(message, model, ctx.modelRegistry.isUsingOAuth(model))) return;
+    if (recordModelRateLimit(stateDir) && isAnthropicModel(ctx.model)) {
+      syncFast(ctx.model);
+      renderState(ctx, loadState(), true);
     }
   });
 

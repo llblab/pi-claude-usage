@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { ClaudeUsageReport } from "./usage.ts";
+import { applyModelRateLimit } from "./model-limit.ts";
 
 // --- Shared Refresh ---
 
@@ -17,7 +18,7 @@ import type { ClaudeUsageReport } from "./usage.ts";
  * atomic renames; short critical sections use an OS-backed SQLite mutex.
  */
 
-export const LEADER_INTERVAL_MS = 3 * 60_000;
+export const LEADER_INTERVAL_MS = 2 * 60_000;
 /** The leader is considered gone after missing its slot by 30 seconds. */
 export const TAKEOVER_AFTER_MS = LEADER_INTERVAL_MS + 30_000;
 /** Minimum pause between two fetch attempts of the same instance. */
@@ -44,6 +45,8 @@ export type SharedState = {
   failures?: number;
   /** No instance should fetch before this time. */
   retryNotBefore?: number;
+  /** Passive model-error signal; never replaces the measured report or its timestamp. */
+  modelRateLimitedAt?: number;
 };
 
 export function readState(dir: string): SharedState | undefined {
@@ -126,6 +129,19 @@ export function ownsRefreshClaim(
   return matchesClaim(current, claim, now ?? Date.now());
 }
 
+/** A passive observation changes neither refresh ownership nor the shared retry deadline. */
+export function recordModelRateLimit(dir: string, now?: number): boolean {
+  const release = tryAcquireLock(dir);
+  if (!release) return false;
+  try {
+    const current = readState(dir);
+    if (!current?.report || applyModelRateLimit(current.report) === current.report) return false;
+    return writeState(dir, { ...current, modelRateLimitedAt: now ?? Date.now() });
+  } finally {
+    release();
+  }
+}
+
 /** A late success OR failure must not overwrite a successor's state. */
 export function publishRefresh(
   dir: string,
@@ -145,6 +161,10 @@ export function publishRefresh(
         claimedAt: at,
         updatedAt: at,
         report: outcome.report,
+        // A request already in flight when the model failed cannot clear its signal.
+        ...(current?.modelRateLimitedAt !== undefined &&
+          current.modelRateLimitedAt >= (current.claimedAt ?? Infinity)
+          ? { modelRateLimitedAt: current.modelRateLimitedAt } : {}),
       });
     }
     const failures = (current?.failures ?? 0) + 1;
